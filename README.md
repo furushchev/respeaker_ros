@@ -12,19 +12,9 @@ A ROS Package for Respeaker Mic Array
 
 ## Preparation
 
-1. Update firmware
+1. Build this package
 
-    ```bash
-    sudo apt-get update
-    sudo pip install pyusb click
-    git clone https://github.com/respeaker/usb_4_mic_array.git
-    cd usb_4_mic_array
-    sudo python dfu.py --download 6_channels_firmware.bin  # The 6 channels version 
-    ```
-
-2. Build this package
-
-    Assumes ROS is installed
+    Assumed that ROS is properly installed.
 
     ```bash
     mkdir -p ~/catkin_ws/src && ~/catkin_ws/src
@@ -36,14 +26,38 @@ A ROS Package for Respeaker Mic Array
     catkin build
     source ~/catkin_ws/devel/setup.bash
     ```
-    
-3. Run executables
+
+1. Install python requirements
+
+    ```bash
+    roscd respeaker_ros
+    sudo pip install -r requirements.txt
+    ```
+
+1. Update firmware
+
+    ```bash
+    sudo apt-get update
+    sudo pip install -r 
+    git clone https://github.com/respeaker/usb_4_mic_array.git
+    cd usb_4_mic_array
+    sudo python dfu.py --download 6_channels_firmware.bin  # The 6 channels version 
+    ```
+
+1. Run executables
 
     ```bash
     roslaunch respeaker_ros respeaker.launch
     rostopic echo /speech_direction  # Result of DoA
     rostopic echo /is_speeching      # Result of VAD
     rostopic echo /audio             # Raw audio
+    ```
+    
+    You can also set various parameters via `dynamic_reconfigure`.
+    
+    ```bash
+    sudo apt install ros-kinetic-rqt-reconfigure  # Install if not
+    rosrun rqt_reconfigure rqt_reconfigure
     ```
 
 ## Author
