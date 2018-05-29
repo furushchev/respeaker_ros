@@ -10,6 +10,7 @@ import numpy as np
 import tf.transformations as T
 import rospy
 import struct
+import time
 import threading
 from audio_common_msgs.msg import AudioData
 from geometry_msgs.msg import PoseStamped
@@ -71,10 +72,27 @@ PARAMETERS = {
 
 
 class RespeakerInterface(object):
+    VENDOR_ID = 0x2886
+    PRODUCT_ID = 0x0018
     TIMEOUT = 100000
 
-    def __init__(self, dev):
-        self.dev = dev
+    def __init__(self):
+        self.dev = usb.core.find(idVendor=self.VENDOR_ID,
+                                 idProduct=self.PRODUCT_ID)
+        if not self.dev:
+            raise RuntimeError("Failed to find Respeaker device")
+        rospy.loginfo("Initializing Respeaker device")
+        self.dev.reset()
+        time.sleep(5)  # it will take 5 seconds to re-recognize as audio device
+        rospy.loginfo("Respeaker device initialized (Version: %s)" % self.version)
+
+    def __del__(self):
+        try:
+            self.close()
+        except:
+            pass
+        finally:
+            self.dev = None
 
     def write(self, name, value):
         try:
@@ -147,27 +165,24 @@ class RespeakerInterface(object):
         usb.util.dispose_resources(self.dev)
 
 
-def init_respeaker(vid=0x2886, pid=0x0018):
-    dev = usb.core.find(idVendor=vid, idProduct=pid)
-    if not dev:
-        return
-    return RespeakerInterface(dev)
 
 
 class RespeakerAudio(object):
     def __init__(self, on_audio, channel=0):
         self.on_audio = on_audio
         self.pyaudio = pyaudio.PyAudio()
-        count = self.pyaudio.get_device_count()
         self.channels = None
         self.channel = channel
         self.device_index = None
 
         # find device
+        count = self.pyaudio.get_device_count()
+        rospy.logdebug("%d audio devices found" % count)
         for i in range(count):
             info = self.pyaudio.get_device_info_by_index(i)
             name = info["name"].encode("utf-8")
             chan = info["maxInputChannels"]
+            rospy.logdebug(" - %d: %s" % (i, name))
             if name.lower().find("respeaker") >= 0:
                 self.channels = chan
                 self.device_index = i
@@ -228,31 +243,24 @@ class RespeakerAudio(object):
 
 class RespeakerNode(object):
     def __init__(self):
+        rospy.on_shutdown(self.on_shutdown)
         self.update_rate = rospy.get_param("~update_rate", 10.0)
         self.sensor_frame_id = rospy.get_param("~sensor_frame_id", "respeaker_base")
-        self.respeaker = init_respeaker()
-        if not self.respeaker:
-            rospy.logfatal("Failed to initialize respeaker device")
-            return
-        else:
-            rospy.loginfo("Initalized device: Version %s" % self.respeaker.version)
-
+        #
+        self.respeaker = RespeakerInterface()
+        # advertise
         self.pub_vad = rospy.Publisher("is_speeching", Bool, queue_size=1)
         self.pub_doa_raw = rospy.Publisher("sound_direction", Int32, queue_size=1)
         self.pub_doa = rospy.Publisher("sound_localization", PoseStamped, queue_size=1)
         self.pub_audio = rospy.Publisher("audio", AudioData, queue_size=10)
-
+        # init config
         self.config = None
         self.dyn_srv = Server(RespeakerConfig, self.on_config)
-
-
-        self.info_timer = rospy.Timer(rospy.Duration(1.0 / self.update_rate),
-                                      self.on_timer)
-
+        # start
         self.respeaker_audio = RespeakerAudio(self.on_audio)
         self.respeaker_audio.start()
-
-        rospy.on_shutdown(self.on_shutdown)
+        self.info_timer = rospy.Timer(rospy.Duration(1.0 / self.update_rate),
+                                      self.on_timer)
 
     def on_shutdown(self):
         try:
@@ -295,6 +303,7 @@ class RespeakerNode(object):
 
         # doa
         self.pub_doa_raw.publish(Int32(data=doa))
+
         msg = PoseStamped()
         msg.header.frame_id = self.sensor_frame_id
         msg.header.stamp = stamp
