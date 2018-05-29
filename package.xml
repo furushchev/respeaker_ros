@@ -4,7 +4,7 @@
   <version>0.0.0</version>
   <description>The respeaker_ros package</description>
   <maintainer email="furushchev@jsk.imi.i.u-tokyo.ac.jp">Yuki Furuta</maintainer>
-  <license>BSD</license>
+  <license>Apache</license>
   <author email="furushchev@jsk.imi.i.u-tokyo.ac.jp">Yuki Furuta</author>
 
   <buildtool_depend>catkin</buildtool_depend>
