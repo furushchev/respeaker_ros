@@ -4,6 +4,7 @@
 
 import usb.core
 import usb.util
+from pixel_ring import usb_pixel_ring_v2
 import pyaudio
 import math
 import numpy as np
@@ -14,7 +15,7 @@ import time
 import threading
 from audio_common_msgs.msg import AudioData
 from geometry_msgs.msg import PoseStamped
-from std_msgs.msg import Bool, Int32
+from std_msgs.msg import Bool, Int32, ColorRGBA
 from dynamic_reconfigure.server import Server
 try:
     from respeaker_ros.cfg import RespeakerConfig
@@ -83,7 +84,10 @@ class RespeakerInterface(object):
             raise RuntimeError("Failed to find Respeaker device")
         rospy.loginfo("Initializing Respeaker device")
         self.dev.reset()
+        self.pixel_ring = usb_pixel_ring_v2.PixelRing(self.dev)
+        self.set_led_think()
         time.sleep(5)  # it will take 5 seconds to re-recognize as audio device
+        self.set_led_trace()
         rospy.loginfo("Respeaker device initialized (Version: %s)" % self.version)
 
     def __del__(self):
@@ -142,6 +146,18 @@ class RespeakerInterface(object):
 
         return result
 
+    def set_led_think(self):
+        self.pixel_ring.set_brightness(10)
+        self.pixel_ring.think()
+
+    def set_led_trace(self):
+        self.pixel_ring.set_brightness(20)
+        self.pixel_ring.trace()
+
+    def set_led_color(self, r, g, b, a):
+        self.pixel_ring.set_brightness(int(20 * a))
+        self.pixel_ring.set_color(r=int(r*255), g=int(g*255), b=int(b*255))
+
     def set_vad_threshold(self, db):
         self.write('GAMMAVAD_SR', db)
 
@@ -163,8 +179,6 @@ class RespeakerInterface(object):
         close the interface
         """
         usb.util.dispose_resources(self.dev)
-
-
 
 
 class RespeakerAudio(object):
@@ -261,6 +275,8 @@ class RespeakerNode(object):
         self.respeaker_audio.start()
         self.info_timer = rospy.Timer(rospy.Duration(1.0 / self.update_rate),
                                       self.on_timer)
+        self.timer_led = None
+        self.sub_led = rospy.Subscriber("status_led", ColorRGBA, self.on_status_led)
 
     def on_shutdown(self):
         try:
@@ -289,6 +305,14 @@ class RespeakerNode(object):
                     self.respeaker.write(name, value)
         self.config = config
         return config
+
+    def on_status_led(self, msg):
+        self.respeaker.set_led_color(r=msg.r, g=msg.g, b=msg.b, a=msg.a)
+        if self.timer_led and self.timer_led.is_alive():
+            self.timer_led.shutdown()
+        self.timer_led = rospy.Timer(rospy.Duration(3.0),
+                                       lambda e: self.respeaker.set_led_trace(),
+                                       oneshot=True)
 
     def on_audio(self, data):
         self.pub_audio.publish(AudioData(data=data))

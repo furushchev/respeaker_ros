@@ -48,18 +48,39 @@ A ROS Package for Respeaker Mic Array
 
     ```bash
     roslaunch respeaker_ros respeaker.launch
-    rostopic echo /speech_direction  # Result of DoA
-    rostopic echo /is_speeching      # Result of VAD
-    rostopic echo /audio             # Raw audio
+    rostopic echo /speech_direction    # Result of DoA
+    rostopic echo /speech_localization # Result of DoA as Pose
+    rostopic echo /is_speeching        # Result of VAD
+    rostopic echo /audio               # Raw audio
     ```
-    
+
     You can also set various parameters via `dynamic_reconfigure`.
-    
+
     ```bash
     sudo apt install ros-kinetic-rqt-reconfigure  # Install if not
     rosrun rqt_reconfigure rqt_reconfigure
     ```
+    
+    To set LED color, publish desired color:
+    
+    ```bash
+    rostopic pub /status_led std_msgs/ColorRGBA "r: 0.0
+    g: 0.0
+    b: 1.0
+    a: 0.3"
+    ```
+
+## Use cases
+
+### Voice Recognition
+
+- [ros_speech_recognition](https://github.com/jsk-ros-pkg/jsk_3rdparty/tree/master/ros_speech_recognition)
+- [julius_ros](http://wiki.ros.org/julius_ros)
 
 ## Author
 
 Yuki Furuta <<furushchev@jsk.imi.i.u-tokyo.ac.jp>>
+
+## License
+
+[Apache License](LICENSE)
