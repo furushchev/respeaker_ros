@@ -1,14 +1,6 @@
 <launch>
-  <arg name="device" default=""/>
-  
   <node name="respeaker_node" pkg="respeaker_ros" type="respeaker_node.py"/>
 
-  <node name="audio_capture" pkg="audio_capture" type="audio_capture">
-    <param name="device" value="" />
-    <param name="format" value="wave" />
-    <param name="channels" value="1" />
-    <param name="depth" value="16" />
-    <param name="sample_rate" value="16000" />
-    <param name="device" value="$(arg device)" />
-  </node>
+  <node name="static_transformer" pkg="tf" type="static_transform_publisher"
+        args="0 0 0 0 0 map respeaker_base 100"/>
 </launch>

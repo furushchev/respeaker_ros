@@ -4,15 +4,19 @@
 
 import usb.core
 import usb.util
+import pyaudio
+import math
+import numpy as np
+import tf.transformations as T
 import rospy
 import struct
-from jsk_recognition_msgs.msg import BoolStamped
-from jsk_recognition_msgs.msg import Int32Stamped
+import threading
+from audio_common_msgs.msg import AudioData
+from geometry_msgs.msg import PoseStamped
+from std_msgs.msg import Bool, Int32
 from dynamic_reconfigure.server import Server
-Config = None
 try:
     from respeaker_ros.cfg import RespeakerConfig
-    Config = RespeakerConfig
 except Exception as e:
     print e
     print "Need to run respeaker_gencfg.py first"
@@ -150,9 +154,82 @@ def init_respeaker(vid=0x2886, pid=0x0018):
     return RespeakerInterface(dev)
 
 
+class RespeakerAudio(object):
+    def __init__(self, on_audio, channel=0):
+        self.on_audio = on_audio
+        self.pyaudio = pyaudio.PyAudio()
+        count = self.pyaudio.get_device_count()
+        self.channels = None
+        self.channel = channel
+        self.device_index = None
+
+        # find device
+        for i in range(count):
+            info = self.pyaudio.get_device_info_by_index(i)
+            name = info["name"].encode("utf-8")
+            chan = info["maxInputChannels"]
+            if name.lower().find("respeaker") >= 0:
+                self.channels = chan
+                self.device_index = i
+                rospy.loginfo("Found %d: %s (channels: %d)" % (i, name, chan))
+                break
+        if self.device_index is None:
+            rospy.logwarn("Failed to find respeaker device by name. Using default input")
+            info = self.pyaudio.get_default_input_device_info()
+            self.channels = info["maxInputChannels"]
+            self.device_index = info["index"]
+
+        if self.channels != 6:
+            rospy.logwarn("%d channel is found for respeaker" % self.channels)
+            rospy.logwarn("You may have to update firmware.")
+        self.channel = min(self.channels - 1, max(0, self.channel))
+
+        self.stream = self.pyaudio.open(
+            input=True, start=False,
+            format=pyaudio.paInt16,
+            channels=self.channels,
+            rate=16000,
+            frames_per_buffer=1024,
+            stream_callback=self.stream_callback,
+            input_device_index=self.device_index,
+        )
+
+    def __del__(self):
+        self.stop()
+        try:
+            self.stream.close()
+        except:
+            pass
+        finally:
+            self.stream = None
+        try:
+            self.pyaudio.terminate()
+        except:
+            pass
+
+    def stream_callback(self, in_data, frame_count, time_info, status):
+        # split channel
+        data = np.fromstring(in_data, dtype=np.int16)
+        chunk_per_channel = len(data) / self.channels
+        data = np.reshape(data, (chunk_per_channel, self.channels))
+        chan_data = data[:, self.channel]
+        # invoke callback
+        self.on_audio(chan_data.tostring())
+        return None, pyaudio.paContinue
+
+    def start(self):
+        if self.stream.is_stopped():
+            self.stream.start_stream()
+
+    def stop(self):
+        if self.stream.is_active():
+            self.stream.stop_stream()
+
+
 class RespeakerNode(object):
     def __init__(self):
         self.update_rate = rospy.get_param("~update_rate", 10.0)
+        self.sensor_frame_id = rospy.get_param("~sensor_frame_id", "respeaker_base")
         self.respeaker = init_respeaker()
         if not self.respeaker:
             rospy.logfatal("Failed to initialize respeaker device")
@@ -160,21 +237,38 @@ class RespeakerNode(object):
         else:
             rospy.loginfo("Initalized device: Version %s" % self.respeaker.version)
 
-        self.pub_vad = rospy.Publisher("is_speeching", BoolStamped, queue_size=1)
-        self.pub_doa = rospy.Publisher("sound_direction", Int32Stamped, queue_size=1)
+        self.pub_vad = rospy.Publisher("is_speeching", Bool, queue_size=1)
+        self.pub_doa_raw = rospy.Publisher("sound_direction", Int32, queue_size=1)
+        self.pub_doa = rospy.Publisher("sound_localization", PoseStamped, queue_size=1)
+        self.pub_audio = rospy.Publisher("audio", AudioData, queue_size=10)
 
         self.config = None
-        self.dyn_srv = Server(Config, self.config_callback)
-        self.timer = rospy.Timer(rospy.Duration(1.0 / self.update_rate),
-                                 self.timer_callback)
+        self.dyn_srv = Server(RespeakerConfig, self.on_config)
 
-    def __del__(self):
+
+        self.info_timer = rospy.Timer(rospy.Duration(1.0 / self.update_rate),
+                                      self.on_timer)
+
+        self.respeaker_audio = RespeakerAudio(self.on_audio)
+        self.respeaker_audio.start()
+
+        rospy.on_shutdown(self.on_shutdown)
+
+    def on_shutdown(self):
         try:
             self.respeaker.close()
-        except Exception:
+        except:
             pass
+        finally:
+            self.respeaker = None
+        try:
+            self.respeaker_audio.stop()
+        except:
+            pass
+        finally:
+            self.respeaker_audio = None
 
-    def config_callback(self, config, level):
+    def on_config(self, config, level):
         if self.config is None:
             # first get value from device and set them as ros parameters
             for name in config.keys():
@@ -188,21 +282,27 @@ class RespeakerNode(object):
         self.config = config
         return config
 
-    def timer_callback(self, event):
-        stamp = event.last_real
+    def on_audio(self, data):
+        self.pub_audio.publish(AudioData(data=data))
+
+    def on_timer(self, event):
+        stamp = event.last_real or rospy.Time.now()
         is_voice = self.respeaker.is_voice()
-        doa = self.respeaker.direction
+        doa = 180 - self.respeaker.direction
 
         # vad
-        msg = BoolStamped()
-        msg.header.stamp = stamp
-        msg.data = is_voice
-        self.pub_vad.publish(msg)
+        self.pub_vad.publish(Bool(data=is_voice))
 
         # doa
-        msg = Int32Stamped()
+        self.pub_doa_raw.publish(Int32(data=doa))
+        msg = PoseStamped()
+        msg.header.frame_id = self.sensor_frame_id
         msg.header.stamp = stamp
-        msg.data = doa
+        ori = T.quaternion_from_euler(math.radians(doa), 0, 0)
+        msg.pose.orientation.w = ori[0]
+        msg.pose.orientation.x = ori[1]
+        msg.pose.orientation.y = ori[2]
+        msg.pose.orientation.z = ori[3]
         self.pub_doa.publish(msg)
 
 
