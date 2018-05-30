@@ -37,8 +37,6 @@ A ROS Package for Respeaker Mic Array
 1. Update firmware
 
     ```bash
-    sudo apt-get update
-    sudo pip install -r 
     git clone https://github.com/respeaker/usb_4_mic_array.git
     cd usb_4_mic_array
     sudo python dfu.py --download 6_channels_firmware.bin  # The 6 channels version 
