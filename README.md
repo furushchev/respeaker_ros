@@ -65,6 +65,7 @@ A ROS Package for Respeaker Mic Array
     rostopic echo /speech_localization # Result of DoA as Pose
     rostopic echo /is_speeching        # Result of VAD
     rostopic echo /audio               # Raw audio
+    rostopic echo /speech_audio        # Audio data while speeching
     ```
 
     You can also set various parameters via `dynamic_reconfigure`.

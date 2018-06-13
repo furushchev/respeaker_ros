@@ -13,7 +13,6 @@ import tf.transformations as T
 import rospy
 import struct
 import time
-import threading
 from audio_common_msgs.msg import AudioData
 from geometry_msgs.msg import PoseStamped
 from std_msgs.msg import Bool, Int32, ColorRGBA
@@ -189,6 +188,9 @@ class RespeakerAudio(object):
         self.channels = None
         self.channel = channel
         self.device_index = None
+        self.rate = 16000
+        self.bitwidth = 2
+        self.bitdepth = 16
 
         # find device
         count = self.pyaudio.get_device_count()
@@ -218,7 +220,7 @@ class RespeakerAudio(object):
             input=True, start=False,
             format=pyaudio.paInt16,
             channels=self.channels,
-            rate=16000,
+            rate=self.rate,
             frames_per_buffer=1024,
             stream_callback=self.stream_callback,
             input_device_index=self.device_index,
@@ -262,18 +264,29 @@ class RespeakerNode(object):
         self.update_rate = rospy.get_param("~update_rate", 10.0)
         self.sensor_frame_id = rospy.get_param("~sensor_frame_id", "respeaker_base")
         self.doa_offset = rospy.get_param("~doa_offset", 90.0)
+        self.speech_prefetch = rospy.get_param("~speech_prefetch", 0.5)
+        self.speech_continuation = rospy.get_param("~speech_continuation", 0.5)
+        self.speech_max_duration = rospy.get_param("~speech_max_duration", 7.0)
+        self.speech_min_duration = rospy.get_param("~speech_min_duration", 0.1)
         #
         self.respeaker = RespeakerInterface()
+        self.speech_audio_buffer = str()
+        self.is_speeching = False
+        self.speech_stopped = rospy.Time(0)
         # advertise
         self.pub_vad = rospy.Publisher("is_speeching", Bool, queue_size=1)
         self.pub_doa_raw = rospy.Publisher("sound_direction", Int32, queue_size=1)
         self.pub_doa = rospy.Publisher("sound_localization", PoseStamped, queue_size=1)
         self.pub_audio = rospy.Publisher("audio", AudioData, queue_size=10)
+        self.pub_speech_audio = rospy.Publisher("speech_audio", AudioData, queue_size=10)
         # init config
         self.config = None
         self.dyn_srv = Server(RespeakerConfig, self.on_config)
         # start
         self.respeaker_audio = RespeakerAudio(self.on_audio)
+        self.speech_prefetch_bytes = int(
+            self.speech_prefetch * self.respeaker_audio.rate * self.respeaker_audio.bitdepth / 8.0)
+        self.speech_prefetch_buffer = str()
         self.respeaker_audio.start()
         self.info_timer = rospy.Timer(rospy.Duration(1.0 / self.update_rate),
                                       self.on_timer)
@@ -318,6 +331,13 @@ class RespeakerNode(object):
 
     def on_audio(self, data):
         self.pub_audio.publish(AudioData(data=data))
+        if self.is_speeching:
+            if len(self.speech_audio_buffer) == 0:
+                self.speech_audio_buffer = self.speech_prefetch_buffer
+            self.speech_audio_buffer += data
+        else:
+            self.speech_prefetch_buffer += data
+            self.speech_prefetch_buffer = self.speech_prefetch_buffer[-self.speech_prefetch_bytes:]
 
     def on_timer(self, event):
         stamp = event.last_real or rospy.Time.now()
@@ -342,6 +362,22 @@ class RespeakerNode(object):
         msg.pose.orientation.y = ori[2]
         msg.pose.orientation.z = ori[3]
         self.pub_doa.publish(msg)
+
+        # speech audio
+        if is_voice:
+            self.speech_stopped = stamp
+        if stamp - self.speech_stopped < rospy.Duration(self.speech_continuation):
+            self.is_speeching = True
+        elif self.is_speeching:
+            buf = self.speech_audio_buffer
+            self.speech_audio_buffer = str()
+            self.is_speeching = False
+            duration = 8.0 * len(buf) * self.respeaker_audio.bitwidth
+            duration = duration / self.respeaker_audio.rate / self.respeaker_audio.bitdepth
+            rospy.loginfo("Speech detected for %.3f seconds" % duration)
+            if self.speech_min_duration <= duration < self.speech_max_duration:
+
+                self.pub_speech_audio.publish(AudioData(data=buf))
 
 
 if __name__ == '__main__':
