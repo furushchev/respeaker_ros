@@ -2,5 +2,5 @@
   <node name="respeaker_node" pkg="respeaker_ros" type="respeaker_node.py"/>
 
   <node name="static_transformer" pkg="tf" type="static_transform_publisher"
-        args="0 0 0 0 0 map respeaker_base 100"/>
+        args="0 0 0 0 0 0 map respeaker_base 100"/>
 </launch>
