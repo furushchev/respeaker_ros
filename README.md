@@ -27,6 +27,21 @@ A ROS Package for Respeaker Mic Array
     source ~/catkin_ws/devel/setup.bash
     ```
 
+1. Register respeaker udev rules
+
+    Normally, we cannot access USB device without permission from user space.
+    Using `udev`, we can give the right permission on only respeaker device automatically.
+
+    Please run the command as followings to install setting file:
+
+    ```bash
+    roscd respeaker_ros
+    sudo cp -f $(rospack find respeaker_ros)/config/60-respeaker.rules /etc/udev/rules.d/60-respeaker.rules
+    sudo systemctl restart udev
+    ```
+
+    And then re-connect the device.
+
 1. Install python requirements
 
     ```bash
