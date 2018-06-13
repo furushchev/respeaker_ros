@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 # Author: furushchev <furushchev@jsk.imi.i.u-tokyo.ac.jp>
 
+import angles
 import usb.core
 import usb.util
 from pixel_ring import usb_pixel_ring_v2
@@ -260,6 +261,7 @@ class RespeakerNode(object):
         rospy.on_shutdown(self.on_shutdown)
         self.update_rate = rospy.get_param("~update_rate", 10.0)
         self.sensor_frame_id = rospy.get_param("~sensor_frame_id", "respeaker_base")
+        self.doa_offset = rospy.get_param("~doa_offset", 90.0)
         #
         self.respeaker = RespeakerInterface()
         # advertise
@@ -320,7 +322,10 @@ class RespeakerNode(object):
     def on_timer(self, event):
         stamp = event.last_real or rospy.Time.now()
         is_voice = self.respeaker.is_voice()
-        doa = 180 - self.respeaker.direction
+        doa_rad = math.radians(self.respeaker.direction - 180.0)
+        doa_rad = angles.shortest_angular_distance(
+            doa_rad, math.radians(self.doa_offset))
+        doa = math.degrees(doa_rad)
 
         # vad
         self.pub_vad.publish(Bool(data=is_voice))
