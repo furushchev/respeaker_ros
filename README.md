@@ -61,8 +61,8 @@ A ROS Package for Respeaker Mic Array
 
     ```bash
     roslaunch respeaker_ros respeaker.launch
-    rostopic echo /speech_direction    # Result of DoA
-    rostopic echo /speech_localization # Result of DoA as Pose
+    rostopic echo /sound_direction     # Result of DoA
+    rostopic echo /sound_localization  # Result of DoA as Pose
     rostopic echo /is_speeching        # Result of VAD
     rostopic echo /audio               # Raw audio
     rostopic echo /speech_audio        # Audio data while speeching
