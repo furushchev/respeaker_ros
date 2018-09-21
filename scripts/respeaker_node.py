@@ -3,28 +3,62 @@
 # Author: furushchev <furushchev@jsk.imi.i.u-tokyo.ac.jp>
 
 import angles
+from contextlib import contextmanager
 import usb.core
 import usb.util
-from pixel_ring import usb_pixel_ring_v2
 import pyaudio
 import math
 import numpy as np
 import tf.transformations as T
+import os
 import rospy
 import struct
+import sys
 import time
 from audio_common_msgs.msg import AudioData
 from geometry_msgs.msg import PoseStamped
 from std_msgs.msg import Bool, Int32, ColorRGBA
 from dynamic_reconfigure.server import Server
+
+try:
+    from pixel_ring import usb_pixel_ring_v2
+except IOError as e:
+    print e
+    raise RuntimeError("Check the device is connected and recognized")
+
 try:
     from respeaker_ros.cfg import RespeakerConfig
 except Exception as e:
     print e
-    print "Need to run respeaker_gencfg.py first"
+    raise RuntimeError("Need to run respeaker_gencfg.py first")
+
+
+
+# suppress error messages from ALSA
+# https://stackoverflow.com/questions/7088672/pyaudio-working-but-spits-out-error-messages-each-time
+# https://stackoverflow.com/questions/36956083/how-can-the-terminal-output-of-executables-run-by-python-functions-be-silenced-i
+@contextmanager
+def ignore_stderr(enable=True):
+    if enable:
+        devnull = None
+        try:
+            devnull = os.open(os.devnull, os.O_WRONLY)
+            stderr = os.dup(2)
+            sys.stderr.flush()
+            os.dup2(devnull, 2)
+            try:
+                yield
+            finally:
+                os.dup2(stderr, 2)
+                os.close(stderr)
+        finally:
+            if devnull is not None:
+                os.close(devnull)
+    else:
+        yield
+
 
 # Partly copied from https://github.com/respeaker/usb_4_mic_array
-
 # parameter list
 # name: (id, offset, type, max, min , r/w, info)
 PARAMETERS = {
@@ -184,7 +218,8 @@ class RespeakerInterface(object):
 class RespeakerAudio(object):
     def __init__(self, on_audio, channel=0):
         self.on_audio = on_audio
-        self.pyaudio = pyaudio.PyAudio()
+        with ignore_stderr(True):
+            self.pyaudio = pyaudio.PyAudio()
         self.channels = None
         self.channel = channel
         self.device_index = None
