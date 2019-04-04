@@ -19,7 +19,6 @@ from audio_common_msgs.msg import AudioData
 from geometry_msgs.msg import PoseStamped
 from std_msgs.msg import Bool, Int32, ColorRGBA
 from dynamic_reconfigure.server import Server
-
 try:
     from pixel_ring import usb_pixel_ring_v2
 except IOError as e:
@@ -31,7 +30,6 @@ try:
 except Exception as e:
     print e
     raise RuntimeError("Need to run respeaker_gencfg.py first")
-
 
 
 # suppress error messages from ALSA
@@ -216,9 +214,9 @@ class RespeakerInterface(object):
 
 
 class RespeakerAudio(object):
-    def __init__(self, on_audio, channel=0):
+    def __init__(self, on_audio, channel=0, suppress_error=True):
         self.on_audio = on_audio
-        with ignore_stderr(True):
+        with ignore_stderr(enable=suppress_error):
             self.pyaudio = pyaudio.PyAudio()
         self.channels = None
         self.channel = channel
@@ -304,6 +302,7 @@ class RespeakerNode(object):
         self.speech_continuation = rospy.get_param("~speech_continuation", 0.5)
         self.speech_max_duration = rospy.get_param("~speech_max_duration", 7.0)
         self.speech_min_duration = rospy.get_param("~speech_min_duration", 0.1)
+        suppress_pyaudio_error = rospy.get_param("~suppress_pyaudio_error", True)
         #
         self.respeaker = RespeakerInterface()
         self.speech_audio_buffer = str()
@@ -321,7 +320,7 @@ class RespeakerNode(object):
         self.config = None
         self.dyn_srv = Server(RespeakerConfig, self.on_config)
         # start
-        self.respeaker_audio = RespeakerAudio(self.on_audio)
+        self.respeaker_audio = RespeakerAudio(self.on_audio, suppress_error=suppress_pyaudio_error)
         self.speech_prefetch_bytes = int(
             self.speech_prefetch * self.respeaker_audio.rate * self.respeaker_audio.bitdepth / 8.0)
         self.speech_prefetch_buffer = str()

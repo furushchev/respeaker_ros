@@ -12,9 +12,7 @@ A ROS Package for Respeaker Mic Array
 
 ## Preparation
 
-1. Build this package
-
-    Assumed that ROS is properly installed.
+1. Install this package
 
     ```bash
     mkdir -p ~/catkin_ws/src && ~/catkin_ws/src
@@ -23,7 +21,7 @@ A ROS Package for Respeaker Mic Array
     source /opt/ros/kinetic/setup.bash
     rosdep install --from-paths src -i -r -n -y
     catkin config --init
-    catkin build
+    catkin build respeaker_ros
     source ~/catkin_ws/devel/setup.bash
     ```
 
@@ -57,6 +55,8 @@ A ROS Package for Respeaker Mic Array
     sudo python dfu.py --download 6_channels_firmware.bin  # The 6 channels version 
     ```
 
+## How to use
+
 1. Run executables
 
     ```bash
@@ -74,9 +74,9 @@ A ROS Package for Respeaker Mic Array
     sudo apt install ros-kinetic-rqt-reconfigure  # Install if not
     rosrun rqt_reconfigure rqt_reconfigure
     ```
-    
+
     To set LED color, publish desired color:
-    
+
     ```bash
     rostopic pub /status_led std_msgs/ColorRGBA "r: 0.0
     g: 0.0
@@ -90,6 +90,20 @@ A ROS Package for Respeaker Mic Array
 
 - [ros_speech_recognition](https://github.com/jsk-ros-pkg/jsk_3rdparty/tree/master/ros_speech_recognition)
 - [julius_ros](http://wiki.ros.org/julius_ros)
+
+## Notes
+
+The configuration file for `dynamic_reconfigure` in this package is created automatically by reading the parameters from devices.
+Though it will be rare case, the configuration file can be updated as followings:
+
+1. Connect the device to the computer.
+1. Run the generator script.
+
+    ```bash
+    rosrun  respeaker_ros respeaker_gencfg.py
+    ```
+1. You will see the updated configuration file at `$(rospack find respeaker_ros)/cfg/Respeaker.cfg`.
+
 
 ## Author
 
