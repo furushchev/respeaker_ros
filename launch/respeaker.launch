@@ -1,6 +1,16 @@
 <launch>
-  <node name="respeaker_node" pkg="respeaker_ros" type="respeaker_node.py"/>
+  <node name="respeaker_node" pkg="respeaker_ros" type="respeaker_node.py"
+	output="screen"/>
 
   <node name="static_transformer" pkg="tf" type="static_transform_publisher"
         args="0 0 0 0 0 0 map respeaker_base 100"/>
+
+  <node name="speech_to_text" pkg="respeaker_ros" type="speech_to_text.py">
+    <remap from="audio" to="speech_audio"/>
+    <rosparam>
+      language: ja-JP
+      self_cancellation: true
+      tts_tolerance: 0.5
+    </rosparam>
+  </node>
 </launch>
