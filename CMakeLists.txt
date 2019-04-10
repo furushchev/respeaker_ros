@@ -13,7 +13,9 @@ catkin_package()
 catkin_generate_virtualenv()
 
 catkin_install_python(
-  PROGRAMS scripts/respeaker_node.py
+  PROGRAMS
+  scripts/respeaker_node.py
+  scripts/speech_to_text.py
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION})
 
 install(DIRECTORY scripts launch
@@ -22,3 +24,8 @@ install(DIRECTORY scripts launch
 
 install(FILES requirements.txt
   DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION})
+
+if (CATKIN_ENABLE_TESTING)
+  catkin_add_nosetests(test/test_installed.py
+    DEPENDENCIES ${PROJECT_NAME}_generate_virtualenv)
+endif()
