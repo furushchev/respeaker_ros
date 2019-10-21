@@ -118,7 +118,7 @@ class RespeakerInterface(object):
         self.dev.reset()
         self.pixel_ring = usb_pixel_ring_v2.PixelRing(self.dev)
         self.set_led_think()
-        time.sleep(5)  # it will take 5 seconds to re-recognize as audio device
+        time.sleep(10)  # it will take 10 seconds to re-recognize as audio device
         self.set_led_trace()
         rospy.loginfo("Respeaker device initialized (Version: %s)" % self.version)
 
