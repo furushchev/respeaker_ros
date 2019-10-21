@@ -288,7 +288,7 @@ class RespeakerAudio(object):
             chan_data = data[:, chan]
             # invoke callback
             self.on_audio(chan_data.tostring(), chan)
-            return None, pyaudio.paContinue
+        return None, pyaudio.paContinue
 
     def start(self):
         if self.stream.is_stopped():
@@ -326,7 +326,7 @@ class RespeakerNode(object):
         self.pub_doa = rospy.Publisher("sound_localization", PoseStamped, queue_size=1, latch=True)
         self.pub_audio = rospy.Publisher("audio", AudioData, queue_size=10)
         self.pub_speech_audio = rospy.Publisher("speech_audio", AudioData, queue_size=10)
-        self.pub_audios = {c:rospy.Publisher('audio/channel%d' % c) for c in self.respeaker_audio.channels}
+        self.pub_audios = {c:rospy.Publisher('audio/channel%d' % c, AudioData, queue_size=10) for c in self.respeaker_audio.channels}
         # init config
         self.config = None
         self.dyn_srv = Server(RespeakerConfig, self.on_config)
