@@ -214,12 +214,12 @@ class RespeakerInterface(object):
 
 
 class RespeakerAudio(object):
-    def __init__(self, on_audio, channel=0, suppress_error=True):
+    def __init__(self, on_audio, channels=None, suppress_error=True):
         self.on_audio = on_audio
         with ignore_stderr(enable=suppress_error):
             self.pyaudio = pyaudio.PyAudio()
-        self.channels = None
-        self.channel = channel
+        self.available_channels = None
+        self.channels = channels
         self.device_index = None
         self.rate = 16000
         self.bitwidth = 2
@@ -234,25 +234,32 @@ class RespeakerAudio(object):
             chan = info["maxInputChannels"]
             rospy.logdebug(" - %d: %s" % (i, name))
             if name.lower().find("respeaker") >= 0:
-                self.channels = chan
+                self.available_channels = chan
                 self.device_index = i
                 rospy.loginfo("Found %d: %s (channels: %d)" % (i, name, chan))
                 break
         if self.device_index is None:
             rospy.logwarn("Failed to find respeaker device by name. Using default input")
             info = self.pyaudio.get_default_input_device_info()
-            self.channels = info["maxInputChannels"]
+            self.available_channels = info["maxInputChannels"]
             self.device_index = info["index"]
 
-        if self.channels != 6:
-            rospy.logwarn("%d channel is found for respeaker" % self.channels)
+        if self.available_channels != 6:
+            rospy.logwarn("%d channel is found for respeaker" % self.available_channels)
             rospy.logwarn("You may have to update firmware.")
-        self.channel = min(self.channels - 1, max(0, self.channel))
+        if self.channels is None:
+            self.channels = range(self.available_channels)
+        else:
+            self.channels = filter(lambda c: 0 <= c < self.available_channels, self.channels)
+        if not self.channels:
+            raise RuntimeError('Invalid channels %s. (Available channels are %s)' % (
+                self.channels, self.available_channels))
+        rospy.loginfo('Using channels %s' % self.channels)
 
         self.stream = self.pyaudio.open(
             input=True, start=False,
             format=pyaudio.paInt16,
-            channels=self.channels,
+            channels=self.available_channels,
             rate=self.rate,
             frames_per_buffer=1024,
             stream_callback=self.stream_callback,
@@ -275,12 +282,13 @@ class RespeakerAudio(object):
     def stream_callback(self, in_data, frame_count, time_info, status):
         # split channel
         data = np.fromstring(in_data, dtype=np.int16)
-        chunk_per_channel = len(data) / self.channels
-        data = np.reshape(data, (chunk_per_channel, self.channels))
-        chan_data = data[:, self.channel]
-        # invoke callback
-        self.on_audio(chan_data.tostring())
-        return None, pyaudio.paContinue
+        chunk_per_channel = len(data) / self.available_channels
+        data = np.reshape(data, (chunk_per_channel, self.available_channels))
+        for chan in self.channels:
+            chan_data = data[:, chan]
+            # invoke callback
+            self.on_audio(chan_data.tostring(), chan)
+            return None, pyaudio.paContinue
 
     def start(self):
         if self.stream.is_stopped():
@@ -302,9 +310,11 @@ class RespeakerNode(object):
         self.speech_continuation = rospy.get_param("~speech_continuation", 0.5)
         self.speech_max_duration = rospy.get_param("~speech_max_duration", 7.0)
         self.speech_min_duration = rospy.get_param("~speech_min_duration", 0.1)
+        self.main_channel = rospy.get_param('~main_channel', 0)
         suppress_pyaudio_error = rospy.get_param("~suppress_pyaudio_error", True)
         #
         self.respeaker = RespeakerInterface()
+        self.respeaker_audio = RespeakerAudio(self.on_audio, suppress_error=suppress_pyaudio_error)
         self.speech_audio_buffer = str()
         self.is_speeching = False
         self.speech_stopped = rospy.Time(0)
@@ -316,11 +326,11 @@ class RespeakerNode(object):
         self.pub_doa = rospy.Publisher("sound_localization", PoseStamped, queue_size=1, latch=True)
         self.pub_audio = rospy.Publisher("audio", AudioData, queue_size=10)
         self.pub_speech_audio = rospy.Publisher("speech_audio", AudioData, queue_size=10)
+        self.pub_audios = {c:rospy.Publisher('audio/channel%d' % c) for c in self.respeaker_audio.channels}
         # init config
         self.config = None
         self.dyn_srv = Server(RespeakerConfig, self.on_config)
         # start
-        self.respeaker_audio = RespeakerAudio(self.on_audio, suppress_error=suppress_pyaudio_error)
         self.speech_prefetch_bytes = int(
             self.speech_prefetch * self.respeaker_audio.rate * self.respeaker_audio.bitdepth / 8.0)
         self.speech_prefetch_buffer = str()
@@ -366,15 +376,17 @@ class RespeakerNode(object):
                                        lambda e: self.respeaker.set_led_trace(),
                                        oneshot=True)
 
-    def on_audio(self, data):
-        self.pub_audio.publish(AudioData(data=data))
-        if self.is_speeching:
-            if len(self.speech_audio_buffer) == 0:
-                self.speech_audio_buffer = self.speech_prefetch_buffer
-            self.speech_audio_buffer += data
-        else:
-            self.speech_prefetch_buffer += data
-            self.speech_prefetch_buffer = self.speech_prefetch_buffer[-self.speech_prefetch_bytes:]
+    def on_audio(self, data, channel):
+        self.pub_audios[channel].publish(AudioData(data=data))
+        if channel == self.main_channel:
+            self.pub_audio.publish(AudioData(data=data))
+            if self.is_speeching:
+                if len(self.speech_audio_buffer) == 0:
+                    self.speech_audio_buffer = self.speech_prefetch_buffer
+                self.speech_audio_buffer += data
+            else:
+                self.speech_prefetch_buffer += data
+                self.speech_prefetch_buffer = self.speech_prefetch_buffer[-self.speech_prefetch_bytes:]
 
     def on_timer(self, event):
         stamp = event.current_real or rospy.Time.now()
