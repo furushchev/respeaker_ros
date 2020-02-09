@@ -4,11 +4,12 @@
 
 import os
 import sys
-from respeaker_node import PARAMETERS, init_respeaker
+from respeaker_ros.parameters import PARAMETERS
+from respeaker_ros import RespeakerInterface
 
 
 def main(out):
-    dev = init_respeaker()
+    dev = RespeakerInterface()
     if not dev:
         print('No device found. Please connect a device.')
         return
@@ -44,15 +45,15 @@ gen = ParameterGenerator()
                     def_ = False
                 f.write("""
 gen.add("{name}", bool_t, 0, "{desc}", {def_})""".format(
-    name=key, desc=desc_, def_=def_))
+                    name=key, desc=desc_, def_=def_))
             elif type_ == "int":
                 f.write("""
 gen.add("{name}", int_t, 0, "{desc}", {def_}, {min_}, {max_})""".format(
-    name=key, desc=desc_, def_=def_, min_=min_, max_=max_))
+                    name=key, desc=desc_, def_=def_, min_=min_, max_=max_))
             elif type_ == "float":
                 f.write("""
 gen.add("{name}", double_t, 0, "{desc}", {def_:f}, {min_:f}, {max_:f})""".format(
-    name=key, desc=desc_, def_=def_, min_=min_, max_=max_))
+                    name=key, desc=desc_, def_=def_, min_=min_, max_=max_))
             else:
                 print "Param '{name}' is ignored.".format(name=key)
 

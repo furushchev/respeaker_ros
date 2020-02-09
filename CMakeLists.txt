@@ -5,6 +5,8 @@ find_package(catkin REQUIRED COMPONENTS
   catkin_virtualenv
   dynamic_reconfigure)
 
+catkin_python_setup()
+
 generate_dynamic_reconfigure_options(
   cfg/Respeaker.cfg)
 
