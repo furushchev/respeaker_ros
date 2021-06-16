@@ -4,13 +4,22 @@ project(respeaker_ros)
 find_package(catkin REQUIRED COMPONENTS
   catkin_virtualenv
   dynamic_reconfigure)
+if ($ENV{ROS_PYTHON_VERSION} EQUAL 2)
+  find_package(catkin_virtualenv REQUIRED)
+else()
+  message(WARNING "catkin_virtualenv does not currently support python3"
+    "you need to install python dependencies manually by running:\n"
+    "roscd respeaker_ros && pip install -r requirements.txt")
+endif()
 
 generate_dynamic_reconfigure_options(
   cfg/Respeaker.cfg)
 
 catkin_package()
 
-catkin_generate_virtualenv()
+if (catkin_virtualenv_FOUND)
+  catkin_generate_virtualenv()
+endif()
 
 catkin_install_python(
   PROGRAMS
