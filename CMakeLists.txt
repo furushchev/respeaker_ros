@@ -12,6 +12,8 @@ else()
     "roscd respeaker_ros && pip install -r requirements.txt")
 endif()
 
+catkin_python_setup()
+
 generate_dynamic_reconfigure_options(
   cfg/Respeaker.cfg)
 
