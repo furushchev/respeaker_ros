@@ -233,7 +233,7 @@ class RespeakerAudio(object):
             name = info["name"].encode("utf-8")
             chan = info["maxInputChannels"]
             rospy.logdebug(" - %d: %s" % (i, name))
-            if name.lower().find("respeaker") >= 0:
+            if name.lower().find(b"respeaker") >= 0:
                 self.available_channels = chan
                 self.device_index = i
                 rospy.loginfo("Found %d: %s (channels: %d)" % (i, name, chan))
