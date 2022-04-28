@@ -22,13 +22,13 @@ from dynamic_reconfigure.server import Server
 try:
     from pixel_ring import usb_pixel_ring_v2
 except IOError as e:
-    print e
+    print(e)
     raise RuntimeError("Check the device is connected and recognized")
 
 try:
     from respeaker_ros.cfg import RespeakerConfig
 except Exception as e:
-    print e
+    print(e)
     raise RuntimeError("Need to run respeaker_gencfg.py first")
 
 
@@ -169,7 +169,7 @@ class RespeakerInterface(object):
             usb.util.CTRL_IN | usb.util.CTRL_TYPE_VENDOR | usb.util.CTRL_RECIPIENT_DEVICE,
             0, cmd, id, length, self.TIMEOUT)
 
-        response = struct.unpack(b'ii', response.tostring())
+        response = struct.unpack(b'ii', bytes([x for x in response]))
 
         if data[2] == 'int':
             result = response[0]
@@ -230,7 +230,7 @@ class RespeakerAudio(object):
         rospy.logdebug("%d audio devices found" % count)
         for i in range(count):
             info = self.pyaudio.get_device_info_by_index(i)
-            name = info["name"].encode("utf-8")
+            name = str(info["name"].encode("utf-8"))
             chan = info["maxInputChannels"]
             rospy.logdebug(" - %d: %s" % (i, name))
             if name.lower().find("respeaker") >= 0:
@@ -281,13 +281,13 @@ class RespeakerAudio(object):
 
     def stream_callback(self, in_data, frame_count, time_info, status):
         # split channel
-        data = np.fromstring(in_data, dtype=np.int16)
-        chunk_per_channel = len(data) / self.available_channels
+        data = np.frombuffer(in_data, dtype=np.int16)
+        chunk_per_channel = np.math.ceil(len(data) / self.available_channels)
         data = np.reshape(data, (chunk_per_channel, self.available_channels))
         for chan in self.channels:
             chan_data = data[:, chan]
             # invoke callback
-            self.on_audio(chan_data.tostring(), chan)
+            self.on_audio(str(chan_data), chan)
         return None, pyaudio.paContinue
 
     def start(self):
@@ -403,7 +403,7 @@ class RespeakerNode(object):
 
         # doa
         if doa != self.prev_doa:
-            self.pub_doa_raw.publish(Int32(data=doa))
+            self.pub_doa_raw.publish(data=int(doa))
             self.prev_doa = doa
 
             msg = PoseStamped()
@@ -432,7 +432,7 @@ class RespeakerNode(object):
             rospy.loginfo("Speech detected for %.3f seconds" % duration)
             if self.speech_min_duration <= duration < self.speech_max_duration:
 
-                self.pub_speech_audio.publish(AudioData(data=buf))
+                self.pub_speech_audio.publish(AudioData(data=bytes(buf,"utf8")))
 
 
 if __name__ == '__main__':
