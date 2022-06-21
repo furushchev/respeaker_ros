@@ -1,6 +1,6 @@
 PyAudio==0.2.8
 SpeechRecognition==3.8.1
 click==6.7
-numpy==1.16.2
+numpy==1.22.0
 pixel-ring==0.1.0
 pyusb==1.0.2
