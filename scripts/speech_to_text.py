@@ -15,10 +15,10 @@ from speech_recognition_msgs.msg import SpeechRecognitionCandidates
 class SpeechToText(object):
     def __init__(self):
         # format of input audio data
-        self.sample_rate = 16000 #rospy.get_param("~sample_rate", 16000)
-        self.sample_width = 2 #rospy.get_param("~sample_width", 2)
+        self.sample_rate = rospy.get_param("~sample_rate", 16000)
+        self.sample_width = rospy.get_param("~sample_width", 2)
         # language of STT service
-        self.language = "en-US" #rospy.get_param("~language", "en-US")
+        self.language = rospy.get_param("~language", "en-US")
         # ignore voice input while the robot is speaking
         self.self_cancellation = rospy.get_param("~self_cancellation", True)
         # time to assume as SPEAKING after tts service is finished
@@ -67,8 +67,6 @@ class SpeechToText(object):
             rospy.loginfo("Speech is cancelled")
             return
         data = SR.AudioData(bytes(msg.data), self.sample_rate, self.sample_width)
-        with open(str(len(msg.data)) + ".wav","wb") as f:
-            f.write(data.get_wav_data())
 
         try:
             rospy.loginfo("Waiting for result %d" % len(data.get_raw_data()))

@@ -225,8 +225,8 @@ class RespeakerAudio(object):
         self.available_channels = None
         self.channels = channels
         self.device_index = None
-        self.rate = 16000
-        self.bitwidth = 2
+        self.rate = rospy.get_param("~sample_rate", 16000)
+        self.bitwidth = rospy.get_param("~sample_width", 2)
         self.bitdepth = 16
         self.i = 0
 
@@ -294,12 +294,6 @@ class RespeakerAudio(object):
         data = np.reshape(data, (chunk_per_channel, self.available_channels))
         for chan in self.channels:
             chan_data = bytearray(data[:, chan].tobytes())
-            
-            ## save this chunk to file
-            #self.i += 1
-            #sound_data = SR.AudioData(chan_data, self.rate, self.bitwidth)
-            #with open(str(chan) + " one chunck " + str(self.i) + ".wav","wb") as f:
-            #    f.write(sound_data.get_wav_data())
 
             # invoke callback
             self.on_audio(chan_data, chan)
@@ -356,13 +350,10 @@ class RespeakerNode(object):
         self.timer_led = None
         self.sub_led = rospy.Subscriber("status_led", ColorRGBA, self.on_status_led)
         self.big_data0 = []
-        self.out = wave.open("/home/pi/Desktop/test.wav", 'wb')
-        self.out.setparams((1, 2, 16000, 1024, "NONE", "NONE"))
 
     def on_shutdown(self):
         try:
             self.respeaker.close()
-            self.out.close()
         except:
             pass
         finally:
@@ -397,9 +388,6 @@ class RespeakerNode(object):
                                        oneshot=True)
 
     def on_audio(self, data, channel):
-
-        if channel == 0:
-            self.out.writeframes(data)
 
         self.pub_audios[channel].publish(AudioData(data=data))
         if channel == self.main_channel:
