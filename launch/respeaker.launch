@@ -8,7 +8,7 @@
   <node name="speech_to_text" pkg="respeaker_ros" type="speech_to_text.py">
     <remap from="audio" to="speech_audio"/>
     <rosparam>
-      language: ja-JP
+      language: en-US
       self_cancellation: true
       tts_tolerance: 0.5
     </rosparam>

@@ -11,6 +11,8 @@
   <depend condition="$ROS_PYTHON_VERSION == 3">catkin_virtualenv</depend>
   <depend>angles</depend>
   <depend>audio_common_msgs</depend>
+  <depend>audio_play</depend>
+  <depend>sound_play</depend>
   <depend>dynamic_reconfigure</depend>
   <depend>geometry_msgs</depend>
   <depend>portaudio19-dev</depend>

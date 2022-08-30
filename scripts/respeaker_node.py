@@ -7,6 +7,7 @@ from contextlib import contextmanager
 import usb.core
 import usb.util
 import pyaudio
+import wave
 import math
 import numpy as np
 import tf.transformations as T
@@ -15,6 +16,7 @@ import rospy
 import struct
 import sys
 import time
+import speech_recognition as SR
 from audio_common_msgs.msg import AudioData
 from geometry_msgs.msg import PoseStamped
 from std_msgs.msg import Bool, Int32, ColorRGBA
@@ -22,13 +24,13 @@ from dynamic_reconfigure.server import Server
 try:
     from pixel_ring import usb_pixel_ring_v2
 except IOError as e:
-    print e
+    print(e)
     raise RuntimeError("Check the device is connected and recognized")
 
 try:
     from respeaker_ros.cfg import RespeakerConfig
 except Exception as e:
-    print e
+    print(e)
     raise RuntimeError("Need to run respeaker_gencfg.py first")
 
 
@@ -169,12 +171,14 @@ class RespeakerInterface(object):
             usb.util.CTRL_IN | usb.util.CTRL_TYPE_VENDOR | usb.util.CTRL_RECIPIENT_DEVICE,
             0, cmd, id, length, self.TIMEOUT)
 
-        response = struct.unpack(b'ii', response.tostring())
+        #response = struct.unpack(b'ii', struct.pack(b'ii',*response))
+        response = struct.unpack(b'ii', bytes([x for x in response]))
 
         if data[2] == 'int':
             result = response[0]
         else:
             result = response[0] * (2.**response[1])
+        #result = response[0]
 
         return result
 
@@ -221,16 +225,17 @@ class RespeakerAudio(object):
         self.available_channels = None
         self.channels = channels
         self.device_index = None
-        self.rate = 16000
-        self.bitwidth = 2
+        self.rate = rospy.get_param("~sample_rate", 16000)
+        self.bitwidth = rospy.get_param("~sample_width", 2)
         self.bitdepth = 16
+        self.i = 0
 
         # find device
         count = self.pyaudio.get_device_count()
         rospy.logdebug("%d audio devices found" % count)
         for i in range(count):
             info = self.pyaudio.get_device_info_by_index(i)
-            name = info["name"].encode("utf-8")
+            name = str(info["name"].encode("utf-8"))
             chan = info["maxInputChannels"]
             rospy.logdebug(" - %d: %s" % (i, name))
             if name.lower().find("respeaker") >= 0:
@@ -266,6 +271,7 @@ class RespeakerAudio(object):
             input_device_index=self.device_index,
         )
 
+
     def __del__(self):
         self.stop()
         try:
@@ -279,15 +285,19 @@ class RespeakerAudio(object):
         except:
             pass
 
+    
     def stream_callback(self, in_data, frame_count, time_info, status):
+        
         # split channel
-        data = np.fromstring(in_data, dtype=np.int16)
-        chunk_per_channel = len(data) / self.available_channels
+        data = np.frombuffer(in_data, dtype=np.int16)
+        chunk_per_channel = np.math.ceil(len(data) / self.available_channels)
         data = np.reshape(data, (chunk_per_channel, self.available_channels))
         for chan in self.channels:
-            chan_data = data[:, chan]
+            chan_data = bytearray(data[:, chan].tobytes())
+
             # invoke callback
-            self.on_audio(chan_data.tostring(), chan)
+            self.on_audio(chan_data, chan)
+        
         return None, pyaudio.paContinue
 
     def start(self):
@@ -315,7 +325,7 @@ class RespeakerNode(object):
         #
         self.respeaker = RespeakerInterface()
         self.respeaker_audio = RespeakerAudio(self.on_audio, suppress_error=suppress_pyaudio_error)
-        self.speech_audio_buffer = str()
+        self.speech_audio_buffer = bytearray()
         self.is_speeching = False
         self.speech_stopped = rospy.Time(0)
         self.prev_is_voice = None
@@ -333,12 +343,13 @@ class RespeakerNode(object):
         # start
         self.speech_prefetch_bytes = int(
             self.speech_prefetch * self.respeaker_audio.rate * self.respeaker_audio.bitdepth / 8.0)
-        self.speech_prefetch_buffer = str()
+        self.speech_prefetch_buffer = bytearray()
         self.respeaker_audio.start()
         self.info_timer = rospy.Timer(rospy.Duration(1.0 / self.update_rate),
                                       self.on_timer)
         self.timer_led = None
         self.sub_led = rospy.Subscriber("status_led", ColorRGBA, self.on_status_led)
+        self.big_data0 = []
 
     def on_shutdown(self):
         try:
@@ -377,15 +388,16 @@ class RespeakerNode(object):
                                        oneshot=True)
 
     def on_audio(self, data, channel):
+
         self.pub_audios[channel].publish(AudioData(data=data))
         if channel == self.main_channel:
             self.pub_audio.publish(AudioData(data=data))
             if self.is_speeching:
                 if len(self.speech_audio_buffer) == 0:
                     self.speech_audio_buffer = self.speech_prefetch_buffer
-                self.speech_audio_buffer += data
+                for x in data: self.speech_audio_buffer += bytearray([x])
             else:
-                self.speech_prefetch_buffer += data
+                for x in data: self.speech_prefetch_buffer += bytearray([x])
                 self.speech_prefetch_buffer = self.speech_prefetch_buffer[-self.speech_prefetch_bytes:]
 
     def on_timer(self, event):
@@ -403,7 +415,7 @@ class RespeakerNode(object):
 
         # doa
         if doa != self.prev_doa:
-            self.pub_doa_raw.publish(Int32(data=doa))
+            self.pub_doa_raw.publish(data=int(doa))
             self.prev_doa = doa
 
             msg = PoseStamped()
@@ -425,14 +437,14 @@ class RespeakerNode(object):
             self.is_speeching = True
         elif self.is_speeching:
             buf = self.speech_audio_buffer
-            self.speech_audio_buffer = str()
+            self.speech_audio_buffer = bytearray()
             self.is_speeching = False
-            duration = 8.0 * len(buf) * self.respeaker_audio.bitwidth
+            duration = len(buf) * self.respeaker_audio.bitwidth * 8.0 
             duration = duration / self.respeaker_audio.rate / self.respeaker_audio.bitdepth
             rospy.loginfo("Speech detected for %.3f seconds" % duration)
             if self.speech_min_duration <= duration < self.speech_max_duration:
 
-                self.pub_speech_audio.publish(AudioData(data=buf))
+                self.pub_speech_audio.publish(AudioData(data=list(buf)))
 
 
 if __name__ == '__main__':
