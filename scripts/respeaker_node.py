@@ -437,7 +437,7 @@ class RespeakerNode(object):
             self.is_speeching = True
         elif self.is_speeching:
             buf = self.speech_audio_buffer
-            self.speech_audio_buffer = str()
+            self.speech_audio_buffer = bytearray()
             self.is_speeching = False
             duration = len(buf) * self.respeaker_audio.bitwidth * 8.0 
             duration = duration / self.respeaker_audio.rate / self.respeaker_audio.bitdepth
